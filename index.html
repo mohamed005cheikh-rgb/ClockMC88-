@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Eternal Clock</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --sun-color: rgba(255, 255, 255, 0);
+            --ambient-dark: rgba(0, 0, 0, 0);
+            --grad-angle: 90deg;
+            --shadow-x: 15px;
+            --shadow-y: 15px;
+            --shadow-blur: 25px;
+            --shadow-alpha: 0.15;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #e8e6e1;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+            font-family: 'Playfair Display', serif;
+            overflow: hidden;
+            color: #333;
+        }
+
+        /* Ambient Lighting Layers */
+        .ambient-light {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 100;
+            background: linear-gradient(var(--grad-angle), var(--sun-color) 0%, transparent 70%);
+            background-color: var(--ambient-dark);
+            mix-blend-mode: multiply;
+            transition: background 1s ease;
+        }
+
+        .sun-glare {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 101;
+            background: linear-gradient(var(--grad-angle), var(--sun-color) 0%, transparent 80%);
+            mix-blend-mode: soft-light;
+            transition: background 1s ease;
+        }
+
+        .watch-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 50px;
+            padding: 30px;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Clock Casing and Frame */
+        .clock-wrapper {
+            position: relative;
+            width: 440px;
+            height: 440px;
+            border-radius: 50%;
+            background: #f2efe9;
+            border: 14px solid #b8b5ad;
+            border-top-color: #d1cfc7;
+            border-left-color: #c4c1b9;
+            border-bottom-color: #9c9a93;
+            border-right-color: #a8a59e;
+            box-shadow: 
+                var(--shadow-x) var(--shadow-y) var(--shadow-blur) rgba(0, 0, 0, var(--shadow-alpha)),
+                inset 0 0 15px rgba(0,0,0,0.05);
+            transition: box-shadow 1s ease;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+        }
+
+        /* Museum-style Uptime Counter */
+        .days-counter-wrapper {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .days-value-container {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .days-value {
+            font-size: 3.5rem;
+            font-weight: 400;
+            color: #1a1a1a;
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .days-unit {
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: #555;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 300;
+        }
+
+        .start-info {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #888;
+        }
+
+        .divider {
+            width: 40px;
+            height: 1px;
+            background-color: #999;
+            margin: 3px auto;
+        }
+
+        /* Audio Activation Prompt */
+        .audio-prompt {
+            position: fixed;
+            bottom: 20px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #777;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 8px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            cursor: pointer;
+            transition: opacity 0.5s ease;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        @media (max-width: 500px) {
+            .clock-wrapper { width: 340px; height: 340px; border-width: 10px; }
+            .days-value { font-size: 2.8rem; }
+            .days-unit { font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="ambient-light"></div>
+<div class="sun-glare"></div>
+
+<div class="audio-prompt" id="audioPrompt">Click anywhere to enable antique ticking mechanism</div>
+
+<div class="watch-container">
+    <div class="clock-wrapper">
+        <canvas id="clockCanvas" width="880" height="880"></canvas>
+    </div>
+
+    <div class="days-counter-wrapper">
+        <div class="start-info">Site Uptime</div>
+        <div class="days-value-container">
+            <span class="days-value" id="elapsedDays">0</span>
+            <span class="days-unit">Days</span>
+        </div>
+        <div class="divider"></div>
+        <div class="start-info" style="font-size: 0.65rem;">
+            Established <span id="startDateDisplay"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // Deployment Date Configuration
+    // ==========================================
+    const START_DATE = new Date('2026-08-21T00:00:00');
+    
+    const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+    document.getElementById('startDateDisplay').textContent = START_DATE.toLocaleDateString('en-US', dateOptions);
+
+    // ==========================================
+    // Web Audio API Sound Generator
+    // ==========================================
+    let audioCtx = null;
+    let audioEnabled = false;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        audioEnabled = true;
+        const prompt = document.getElementById('audioPrompt');
+        if (prompt) {
+            prompt.style.opacity = '0';
+            setTimeout(() => prompt.remove(), 500);
+        }
+    }
+
+    window.addEventListener('click', initAudio, { once: true });
+
+    function playTickSound() {
+        if (!audioEnabled || !audioCtx) return;
+        try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.02);
+            
+            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.02);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.02);
+        } catch (e) {
+            // Audio context safely ignored if restricted
+        }
+    }
+
+    function playChimeSound(isTwelve) {
+        if (!audioEnabled || !audioCtx) return;
+        try {
+            const freqs = isTwelve ? [220, 330, 440, 550, 660, 880] : [440, 660, 880];
+            freqs.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                
+                const duration = isTwelve ? 4.0 : 2.0;
+                gain.gain.setValueAtTime(0.15 / (index + 1), audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            });
+        } catch (e) {
+            // Audio context safely ignored if restricted
+        }
+    }
+
+    // ==========================================
+    // Uptime Counter Calculation
+    // ==========================================
+    function updateDaysCounter() {
+        const now = new Date();
+        const diffMs = now.getTime() - START_DATE.getTime();
+        const days = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        document.getElementById('elapsedDays').textContent = days;
+    }
+    setInterval(updateDaysCounter, 1000 * 60 * 60);
+    updateDaysCounter();
+
+    // ==========================================
+    // Clock Drawing & Mechanics
+    // ==========================================
+    const canvas = document.getElementById('clockCanvas');
+    const ctx = canvas.getContext('2d');
+    const size = 880;
+    const center = size / 2;
+    const radius = 410; 
+
+    let lastSecond = -1;
+    let lastHour = -1;
+
+    function drawHand(ctx, angle, length, width, color, shadowX, shadowY) {
+        ctx.save();
+        ctx.translate(center, center);
+        ctx.rotate(angle);
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 15;
+        const sin = Math.sin(-angle);
+        const cos = Math.cos(-angle);
+        ctx.shadowOffsetX = shadowX * cos - shadowY * sin;
+        ctx.shadowOffsetY = shadowX * sin + shadowY * cos;
+
+        ctx.beginPath();
+        ctx.moveTo(-width/2, 40);
+        ctx.lineTo(width/2, 40);
+        ctx.lineTo(width/3, -length * 0.75);
+        ctx.lineTo(width * 1.5, -length * 0.85);
+        ctx.lineTo(0, -length);
+        ctx.lineTo(-width * 1.5, -length * 0.85);
+        ctx.lineTo(-width/3, -length * 0.75);
+        ctx.closePath();
+
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawSecondHand(ctx, angle, length, shadowX, shadowY) {
+        ctx.save();
+        ctx.translate(center, center);
+        ctx.rotate(angle);
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+        ctx.shadowBlur = 10;
+        const sin = Math.sin(-angle);
+        const cos = Math.cos(-angle);
+        ctx.shadowOffsetX = shadowX * cos - shadowY * sin;
+        ctx.shadowOffsetY = shadowX * sin + shadowY * cos;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 80); 
+        ctx.lineTo(0, -length);
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 50, 12, 0, 2*Math.PI);
+        ctx.fillStyle = '#f2efe9';
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    function renderClock() {
+        const now = new Date();
+        const currentSecond = now.getSeconds();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+
+        // Trigger tick sound on second change
+        if (currentSecond !== lastSecond) {
+            playTickSound();
+            lastSecond = currentSecond;
+        }
+
+        // Trigger chime on hour change (special chime at 12:00)
+        if (currentHour !== lastHour && lastHour !== -1 && currentMinute === 0 && currentSecond === 0) {
+            playChimeSound(currentHour === 12 || currentHour === 0);
+        }
+        lastHour = currentHour;
+
+        const timeInHours = currentHour + currentMinute / 60 + currentSecond / 3600;
+
+        // Sunlight and shadow calculations based on local device time
+        const shadowAngle = Math.PI - ((timeInHours - 6) / 12) * Math.PI;
+        const sunElevation = Math.sin(((timeInHours - 6) / 12) * Math.PI);
+        const isDaytime = sunElevation > 0;
+        
+        const shadowDistMulti = isDaytime ? 20 + (1 - sunElevation) * 40 : 20; 
+        const dx = Math.cos(shadowAngle) * shadowDistMulti;
+        const dy = Math.sin(shadowAngle) * shadowDistMulti;
+
+        const root = document.documentElement;
+        root.style.setProperty('--shadow-x', `${dx}px`);
+        root.style.setProperty('--shadow-y', `${dy}px`);
+        
+        let sunColor, ambientDark;
+        if (isDaytime) {
+            const goldenIntensity = Math.pow(1 - sunElevation, 2.5);
+            sunColor = `rgba(255, ${210 + sunElevation*45}, ${140 + sunElevation*115}, ${goldenIntensity * 0.45})`;
+            ambientDark = `rgba(0, 0, 0, 0)`;
+            root.style.setProperty('--shadow-alpha', 0.15 + sunElevation * 0.1);
+        } else {
+            const nightIntensity = Math.abs(sunElevation);
+            sunColor = `rgba(180, 200, 255, 0.05)`;
+            ambientDark = `rgba(15, 20, 25, ${0.6 + nightIntensity * 0.3})`;
+            root.style.setProperty('--shadow-alpha', 0.3);
+        }
+
+        const cssAngle = (shadowAngle * 180 / Math.PI) + 90;
+        root.style.setProperty('--sun-color', sunColor);
+        root.style.setProperty('--ambient-dark', ambientDark);
+        root.style.setProperty('--grad-angle', `${cssAngle}deg`);
+
+        // Render Canvas
+        ctx.clearRect(0, 0, size, size);
+
+        ctx.beginPath();
+        ctx.arc(center, center, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = '#faf8f2';
+        ctx.fill();
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(center, center, radius, 0, 2*Math.PI);
+        ctx.clip(); 
+        
+        ctx.beginPath();
+        ctx.arc(center, center, radius + 30, 0, 2*Math.PI);
+        ctx.lineWidth = 60;
+        ctx.strokeStyle = '#000';
+        ctx.shadowColor = `rgba(0,0,0,${isDaytime ? 0.15 + (1-sunElevation)*0.1 : 0.25})`;
+        ctx.shadowBlur = 40;
+        ctx.shadowOffsetX = dx * 1.2;
+        ctx.shadowOffsetY = dy * 1.2;
+        ctx.stroke();
+        ctx.restore();
+
+        // Branding and Contact Info
+        ctx.fillStyle = '#1a1a1a';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '50px "Great Vibes", cursive, serif';
+        ctx.fillText('clockMC88', center, center - 150);
+
+        ctx.font = '300 17px "Montserrat", sans-serif';
+        ctx.letterSpacing = "1px";
+        ctx.fillStyle = '#555';
+        ctx.fillText('mohamed005cheikh@gmail.com', center, center + 160);
+        ctx.letterSpacing = "0px";
+
+        // Ticks
+        for (let i = 0; i < 60; i++) {
+            const angle = (i / 60) * 2 * Math.PI - Math.PI / 2;
+            const isHour = i % 5 === 0;
+            const outerR = radius - 20;
+            const innerR = isHour ? radius - 45 : radius - 30;
+            
+            ctx.beginPath();
+            ctx.moveTo(center + Math.cos(angle) * innerR, center + Math.sin(angle) * innerR);
+            ctx.lineTo(center + Math.cos(angle) * outerR, center + Math.sin(angle) * outerR);
+            ctx.strokeStyle = isHour ? '#222' : '#888';
+            ctx.lineWidth = isHour ? 4 : 2;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        // Numerals
+        ctx.font = '600 68px "Playfair Display", serif';
+        ctx.fillStyle = '#222';
+        for (let i = 1; i <= 12; i++) {
+            const angle = (i / 12) * 2 * Math.PI - Math.PI / 2;
+            const numR = radius - 95;
+            const x = center + Math.cos(angle) * numR;
+            const y = center + Math.sin(angle) * numR;
+            ctx.fillText(i.toString(), x, y + 5);
+        }
+
+        // Hands
+        const hours = currentHour % 12;
+        const minutes = currentMinute;
+        const seconds = currentSecond;
+        const millis = now.getMilliseconds();
+
+        const secAngle = (seconds + millis / 1000) * (Math.PI / 30);
+        const minAngle = (minutes + seconds / 60) * (Math.PI / 30);
+        const hrAngle = (hours + minutes / 60) * (Math.PI / 6);
+
+        drawHand(ctx, hrAngle, radius - 180, 18, '#1a1a1a', dx, dy);
+        drawHand(ctx, minAngle, radius - 80, 12, '#1a1a1a', dx, dy);
+        drawSecondHand(ctx, secAngle, radius - 60, dx, dy);
+
+        // Center Pin
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = dx * 0.3;
+        ctx.shadowOffsetY = dy * 0.3;
+        ctx.beginPath();
+        ctx.arc(center, center, 14, 0, 2 * Math.PI);
+        ctx.fillStyle = '#b8b5ad';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#444';
+        ctx.stroke();
+        
+        ctx.shadowColor = 'transparent';
+        ctx.beginPath();
+        ctx.arc(center, center, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fill();
+
+        requestAnimationFrame(renderClock);
+    }
+
+    document.fonts.ready.then(() => {
+        requestAnimationFrame(renderClock);
+    });
+
+</script>
+</body>
+</html>
+
